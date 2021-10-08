@@ -52,6 +52,9 @@ telescope_SOURCES +=	phos/phos.h	\
 noinst_PROGRAMS =	pagebundler
 pagebundler_SOURCES =	pagebundler.c
 
+noinst_PROGRAMS =	cachectl
+cachectl_SOURCES =	cachectl.c cache.c cache.h compat.h
+
 BUILT_SOURCES =		cmd.gen.c compile_flags.txt emoji-matcher.c pages.c
 
 CLEANFILES =		cmd.gen.c compile_flags.txt emoji-matcher.c pages.c \
