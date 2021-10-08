@@ -75,6 +75,8 @@ AC_CHECK_LIB(tls, tls_init, [], [
 	AC_MSG_ERROR([requires libtls])
 ])
 
+AC_CHECK_LIB(z, [inflateEnd], [], [AC_MSG_ERROR([requires zlib])])
+
 case "$host_os" in
 	*openbsd*)
 		AC_CHECK_LIB([event], [event_init], [],
