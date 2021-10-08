@@ -31,6 +31,7 @@ extern char	bookmark_file[PATH_MAX];
 extern char	known_hosts_file[PATH_MAX], known_host_tmp[PATH_MAX];
 extern char	crashed_file[PATH_MAX];
 extern char	session_file[PATH_MAX];
+extern char	cache_file[PATH_MAX];
 
 int		 fs_init(void);
 int		 fs_main(void);

@@ -33,6 +33,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "cache.h"
 #include "fs.h"
 #include "pages.h"
 #include "telescope.h"
@@ -78,6 +79,9 @@ char		bookmark_file[PATH_MAX];
 char		known_hosts_file[PATH_MAX], known_hosts_tmp[PATH_MAX];
 char		crashed_file[PATH_MAX];
 char		session_file[PATH_MAX];
+char		cache_file[PATH_MAX];
+
+static struct cache	cache;
 
 static imsg_handlerfn *handlers[] = {
 	[IMSG_GET] = handle_get,
@@ -661,6 +665,8 @@ fs_init(void)
 	    sizeof(session_file));
 	join_path(crashed_file, cache_path_base, "/crashed",
 	    sizeof(crashed_file));
+	join_path(cache_file, cache_path_base, "/cache",
+	    sizeof(cache_file));
 
 	return 1;
 }
@@ -686,7 +692,12 @@ fs_main(void)
 
 	sandbox_fs_process();
 
+	if (cache_open(cache_file, &cache) == -1)
+		err(1, "can't open cache file %s", cache_file);
+
 	event_dispatch();
+
+	cache_close(&cache);
 	return 0;
 }
 
