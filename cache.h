@@ -30,15 +30,18 @@ struct cache {
 	uint64_t	hpadding;   /* header padding */
 	uint64_t	free_entry; /* first free entry */
 	uint64_t	offend;	    /* EOF offset */
+	size_t		deleted_entries;
+	uint64_t	deleted_size;
 };
 
 struct cache_hit {
 	off_t	 pos;
 };
 
-int		cache_open(const char *path, struct cache *);
+int		cache_open(const char *, struct cache *);
 int		cache_search(struct cache *, const char *, struct cache_hit *);
 int		cache_insert(struct cache *, const char *, const void *, size_t);
+int		cache_compat(struct cache *);
 void		cache_close(struct cache *);
 
 #endif

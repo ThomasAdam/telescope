@@ -33,15 +33,19 @@
 #include "cache.h"
 #include "telescope.h"
 
+#define nitems(v)		(sizeof(v)/sizeof(v[0]))
+
 #define MAGIC			"\0\0TC\0\0"
 #define FILE_VERSION		1
 
 #define INDEX_OFFSET		(6+2+8)
 #define INDEX_SIZE_OFFSET	(6+2)
-#define FOFF_OFFSET(base)	((base) + 8) /* skip 8 bytes of urlen */
+#define FOFF_OFFSET(base)	((base) + 8) /* skip 8 bytes of urlen+flags */
 #define ENTRY_SIZE(urlen)	(8 + 8 + 8 + 8 + (urlen))
 
 #define MIN_HDR_PADDING		128 /* XXX: bump to sth like 1K */
+
+#define CF_DELETE		0x01
 
 #define CHUNK			16384 /* for inflate/deflate */
 
@@ -69,13 +73,14 @@
  * The index size is the number of index entries present in the
  * index.  Each index entry has the following structure:
  *
- *	urlen			8 bytes
+ *	urlen			4 bytes
+ *	flags			4 bytes
  *	file offset		8 bytes
  *	size			8 bytes
  *	UNIX timestamp		8 bytes
  *	URL			urlen bytes
  *
- * In truth, 2 bytes would be enough for urlen but 8 bytes allows for
+ * In truth, 2 bytes would be enough for urlen but 4 bytes allows for
  * better alignment.  However, the upper bound for the URL len is the
  * one given by the Gemini specification: 1024 bytes.  The file offset
  * is absolute, i.e. it is meant to be passed to fseek(3).  The UNIX
@@ -98,12 +103,13 @@
  */
 
 static int
-compute_offend(struct cache *c)
+scan_index(struct cache *c)
 {
-	struct iovec	iov[3];
+	struct iovec	iov[4];
 	struct stat	sb;
 	ssize_t		r;
-	uint64_t	urlen, foff, size;
+	uint32_t	urlen, flags;
+	uint64_t	foff, size;
 	off_t		off, firstpage, offend, end;
 
 	if (fstat(c->fd, &sb) == -1)
@@ -125,15 +131,19 @@ compute_offend(struct cache *c)
 		iov[0].iov_len = sizeof(urlen);
 		r += sizeof(urlen);
 
-		iov[1].iov_base = &foff;
-		iov[1].iov_len = sizeof(foff);
+		iov[1].iov_base = &flags;
+		iov[1].iov_len = sizeof(flags);
+		r += sizeof(flags);
+
+		iov[2].iov_base = &foff;
+		iov[2].iov_len = sizeof(foff);
 		r += sizeof(urlen);
 
-		iov[2].iov_base = &size;
-		iov[2].iov_len = sizeof(size);
+		iov[3].iov_base = &size;
+		iov[3].iov_len = sizeof(size);
 		r += sizeof(size);
 
-		if (readv(c->fd, iov, 3) != r)
+		if (readv(c->fd, iov, nitems(iov)) != r)
 			return -1;
 
 		urlen = le64toh(urlen);
@@ -174,8 +184,9 @@ static int
 write_entry(struct cache *c, const char *url, off_t fileoff, size_t pagesize,
     uint64_t ts)
 {
-	struct iovec	iov[5];
-	uint64_t	ulen, pgsz, foff, isz;
+	struct iovec	iov[6];
+	uint32_t	ulen, flags = 0;
+	uint64_t	pgsz, foff, isz;
 	ssize_t		r = 0;
 
 	if (url == NULL)
@@ -192,23 +203,27 @@ write_entry(struct cache *c, const char *url, off_t fileoff, size_t pagesize,
 	iov[0].iov_len = sizeof(ulen);
 	r += sizeof(ulen);
 
-	iov[1].iov_base = &foff;
-	iov[1].iov_len = sizeof(foff);
+	iov[1].iov_base = &flags;
+	iov[1].iov_len = sizeof(flags);
+	r += sizeof(flags);
+
+	iov[2].iov_base = &foff;
+	iov[2].iov_len = sizeof(foff);
 	r += sizeof(foff);
 
-	iov[2].iov_base = &pgsz;
-	iov[2].iov_len = sizeof(pgsz);
+	iov[3].iov_base = &pgsz;
+	iov[3].iov_len = sizeof(pgsz);
 	r += sizeof(pgsz);
 
-	iov[3].iov_base = &ts;
-	iov[3].iov_len = sizeof(ts);
+	iov[4].iov_base = &ts;
+	iov[4].iov_len = sizeof(ts);
 	r += sizeof(ts);
 
-	iov[4].iov_base = (void *)url;
-	iov[4].iov_len = ulen;
+	iov[5].iov_base = (void *)url;
+	iov[5].iov_len = ulen;
 	r += ulen;
 
-	if (writev(c->fd, iov, 5) != r)
+	if (writev(c->fd, iov, nitems(iov)) != r)
 		return -1;
 
 	c->indexsize += r;
@@ -278,7 +293,7 @@ cache_open(const char *path, struct cache *c)
 		goto err;
 	c->indexsize = le64toh(c->indexsize);
 
-	return compute_offend(c);
+	return scan_index(c);
 
 err:
 	close(c->fd);
@@ -299,10 +314,11 @@ cache_search(struct cache *c, const char *url, struct cache_hit *hit)
 static int
 grow_header(struct cache *c)
 {
-	struct iovec	iov[3];
+	struct iovec	iov[4];
 	ssize_t		len, r = 0;
 	off_t		offend;
-	uint64_t	urlen, foff, size, s;
+	uint32_t	urlen, flags;
+	uint64_t	foff, size, s;
 	char		chunk[BUFSIZ];
 
 	if (lseek(c->fd, INDEX_OFFSET, SEEK_SET) == -1)
@@ -314,18 +330,23 @@ grow_header(struct cache *c)
 	iov[0].iov_len = sizeof(urlen);
 	r += sizeof(urlen);
 
-	iov[1].iov_base = &foff;
-	iov[1].iov_len = sizeof(foff);
+	iov[1].iov_base = &flags;
+	iov[1].iov_len = sizeof(flags);
+	r += sizeof(flags);
+
+	iov[2].iov_base = &foff;
+	iov[2].iov_len = sizeof(foff);
 	r += sizeof(foff);
 
-	iov[2].iov_base = &size;
-	iov[2].iov_len = sizeof(size);
+	iov[3].iov_base = &size;
+	iov[3].iov_len = sizeof(size);
 	r += sizeof(size);
 
-	if (readv(c->fd, iov, 3) != r)
+	if (readv(c->fd, iov, nitems(iov)) != r)
 		return -1;
 
-	urlen = le64toh(urlen);
+	urlen = le32toh(urlen);
+	flags = le32toh(flags);
 	foff = le64toh(urlen);
 	size = le64toh(size);
 
@@ -427,8 +448,8 @@ cache_insert(struct cache *c, const char *url, const void *page, size_t len)
 	 * Write first, then update the index.  This way, if an error
 	 * occurrs, the index is still in a coherent state.
 	 */
-
-	if (pwrite(c->fd, buf, buflen, c->offend) != (ssize_t)buflen)
+	/* TODO: allow partial writes? */
+	if (pwrite(c->fd, buf, buflen, c->offend) == -1)
                 goto err;
 
 	if (lseek(c->fd, c->free_entry, SEEK_SET) == -1)
@@ -446,6 +467,12 @@ err:
 	if (z != NULL)
 		fclose(z);
 	free(buf);
+	return -1;
+}
+
+int
+cache_compat(struct cache *c)
+{
 	return -1;
 }
 
