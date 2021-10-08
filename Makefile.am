@@ -2,7 +2,9 @@ bin_PROGRAMS =		telescope
 
 EXTRA_telescope_SOURCES = compat/ohash.h compat/queue.h compat/imsg.h
 
-telescope_SOURCES =	cmd.c			\
+telescope_SOURCES =	cache.c			\
+			cache.h			\
+			cmd.c			\
 			cmd.gen.c		\
 			cmd.h			\
 			compat.h		\
