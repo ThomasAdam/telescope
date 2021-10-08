@@ -80,6 +80,7 @@ char		known_hosts_file[PATH_MAX], known_hosts_tmp[PATH_MAX];
 char		crashed_file[PATH_MAX];
 char		session_file[PATH_MAX];
 char		cache_file[PATH_MAX];
+char		cache_file_tmp[PATH_MAX];
 
 static struct cache	cache;
 
@@ -667,6 +668,8 @@ fs_init(void)
 	    sizeof(crashed_file));
 	join_path(cache_file, cache_path_base, "/cache",
 	    sizeof(cache_file));
+	join_path(cache_file_tmp, cache_path_base, "/cache.tmp.XXXXXXXXXX",
+	    sizeof(cache_file_tmp));
 
 	return 1;
 }
