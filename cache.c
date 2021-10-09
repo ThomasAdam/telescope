@@ -58,7 +58,7 @@
  *
  * 	MAGIC string		6 bytes
  * 	version number		2 bytes
- *	index size              8 bytes (doesn't account padding)
+ *	index size              8 bytes
  * 	index entries		--
  * 	compressed pages	--
  *
